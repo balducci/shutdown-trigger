@@ -1,0 +1,448 @@
+#!/bin/sh
+#
+# source functions
+#
+for f in `ls ${HOME}/scripts/sh-funcs/*.sh 2>/dev/null`;do . $f;done
+
+COMMENT_START <<"COMMENT_END"
+
+    TODO
+    |---start/stop script in /etc/init.d
+    `---FIXME
+        |---the DEBUG/debug_message machinery is UTTERLY broken
+        `---ncat is not killed when shutdown-trigger is killed
+
+2026-08-19
+There was a power fail and shutdown-trigger was up and running, still
+under development, but functional.
+And it worked perfectly: I found all the three boxes (lin2/bld4/baldx)
+gently shutdown. Very good!
+
+COMMENT_END
+
+
+############
+# FUNCTION #
+############
+print_help () {
+
+    cat <<EOF
+
+shutdown-trigger: monitor a usb device connected to the main power
+line to shutdown the system upon power failures
+
+shutdown-trigger <options>
+
+-b         run as a client of the running server
+           default: run as a server
+-C         dump configuration (as the result of values in the
+           configuration file and the command line options) to stdout
+           and exit
+-c <file>  source this configuration file
+           default: /etc/shutdown-trigger.conf
+-d         verbosely print debugging messages (when run as a server)
+-f         run in the foreground and do not daemonize
+           default: after startup, rerun an instance in the background
+-h         print help message and exit
+-l <file>  complete path to the logfile
+           default: /var/log/shutdown-trigger.log
+-P <port number>
+           port number for client/server communication
+           defaul: first available port above 38000
+-p <file>  where to save our pid
+           default: /var/run/shutdown-trigger.pid
+-r <file>  where to store port number for client/server communication
+-s <n>     sleep n seconds between successive
+           polls of the trigger device
+           default: 30
+
+EOF
+
+    exit 0
+
+} # function print_help ends here
+
+############
+# FUNCTION #
+############
+DEBUG () { ${debug} && return 0; return 1; } 
+
+############
+# FUNCTION #
+############
+debug_message () {
+local message="${@}"
+message="DEBUG: ${message}"
+echo "${message}" 1>>${log_file} 2>&1
+return 0
+}
+
+
+########################################
+# preliminary sanity checks start here #
+########################################
+
+#
+# must be run as root
+#
+glob root $(whoami)
+Assert "$? -eq 0" ${LINENO} "
+
+ERROR:
+must be run as root
+
+" # Assert
+
+#
+# Make sure that the trigger device is up
+# and running, and that we can poll it
+#
+eval "${trigger_cmd}"
+no_glob 0 ${?} && {
+cat <<EOF
+
+ERROR:
+trigger command: |${trigger_cmd}|
+returned non-null code at start time
+Is the trigger device connected and running?
+FIXME
+
+EOF
+
+exit 1
+} # no_glob 0 ${?}
+
+######################################
+# preliminary sanity checks end here #
+######################################
+
+# default values here
+client=false
+debug=false
+dump_conf=false
+foreground=false # default is to daemonize ourselves
+log_file=/var/log/shutdown-trigger.log
+pid_file=/var/run/shutdown-trigger.pid
+ncat_port_number=-1 # init to impossible value
+ncat_port_file=/var/run/shutdown-trigger.port
+# ncat dumps received messages in this file
+ncat_message_file=/var/run/shutdown-trigger.ncat
+sleep_time=30
+trigger_cmd='lsusb -d 174c:55aa 1>/dev/null 2>&1' # manhattan docking station
+                                                  # (ASMedia Technology)
+
+
+# define client/server role
+echo "${@}"|grep -Esq '(^|[[:space:]])-b[[:space:]]?' && client=true
+# set also this variable for convenience
+server=true
+${client} && server=false
+
+
+##########
+# server #
+##########
+# run as a server (default behavior)
+${server} && {
+
+# pick the (possible) -c command line option
+# before sourcing the configuration file
+read configuration_file_try < <(echo "${@}"|\
+                                    grep -Eso '\-c[[:space:]]?[^-[:space:]]+'|\
+                                    sed -E -e's|^-c||')
+configuration_file=${configuration_file_try:-/etc/shutdown-trigger.conf}
+
+
+#
+# do we have a configuration_file to source in the first place?
+#
+test -e "${configuration_file}"
+Assert "$? -eq 0" ${LINENO} "
+
+ERROR:
+configuration file: |${configuration_file}|
+cannot be found
+
+" # Assert
+
+# now we can source the configuration file
+. ${configuration_file}
+
+# get remaining command line options
+# sleep_time_default=30
+# log_file_default=/var/log/shutdown-trigger.log
+# pid_file_default=/var/run/shutdown-trigger.pid
+# unset sleep_time_cmd_line
+# unset log_file_cmd_line
+# unset pid_file_cmd_line
+while getopts "Cc:dfhl:P:p:r:s:" _opt
+do :
+glob C "${_opt}" && dump_conf=true
+glob P "${_opt}" && ncat_port_number=${OPTARG}
+glob d "${_opt}" && debug=true
+glob f "${_opt}" && foreground=true
+glob h "${_opt}" && print_help
+glob l "${_opt}" && log_file=${OPTARG}
+glob p "${_opt}" && pid_file=${OPTARG}
+glob r "${_opt}" && ncat_port_file=${OPTARG}
+glob s "${_opt}" && sleep_time=${OPTARG}
+done # while getopts x _opt
+# get remaining arguments (ie those NOT catched by getopts)
+shift $((OPTIND-1))
+
+#
+# Dump configuration to stdout and exit
+#
+is_true dump_conf && {
+(cat|column -t|sed -E -e's|,@,| |g') <<EOF
+whoami:   $(whoami)
+configuration_file: ${configuration_file}
+foreground: ${foreground}
+log_file: ${log_file}
+pid_file: ${pid_file}
+sleep_time: ${sleep_time}
+trigger_cmd: $(echo ${trigger_cmd}|sed -E -e's|[[:space:]]|,@,|g')
+EOF
+exit 0
+} # is_true dump_conf 
+
+
+
+# Wait for the pid of the backgrounded process (below) to
+# show up (in the ps command and/or in /proc/$$/stat)
+sleep 2
+# In general, a process can know if it is running in the background by
+# asserting equality of fields 4 (ppid) and 8 (tpgid) of its
+# /proc/<pid>/stat file (man proc_pid_stat). However, if we had been
+# spawned in the background by the first instance and this latter
+# exited, the field n. 8 of our /proc/$$/stat file will be -1 (I found
+# this empirically; I could not find any doc confirming it: is this
+# reliable?); so we also check for this condition
+IFS=$' '
+retval=($(</proc/$$/stat))
+IFS=$' \t\n'
+BACKGROUND=false
+for i in 1
+do :
+test  "${retval[3]}"  -eq  "${retval[7]}"  &&  BACKGROUND=true  &&  break
+test  "${retval[7]}"  -eq  -1              &&  BACKGROUND=true  &&  break
+done
+### DEBUG && \
+###         debug_message "BACKGROUND: |${BACKGROUND}|"  1>>${log_file} 2>&1
+
+#
+# When the -f option was given, we do not daemonize
+# Default is to daemonize ourselves (only when BACKGROUND is false,
+# otherwise an infinite loop will set up)
+#
+is_false foreground && is_false BACKGROUND && {
+    >/dev/null 2>&1 nohup ${0} "${@}" &
+    # ${0}  "${@}" &
+    ### DEBUG && \
+    ###     debug_message "pid of background spawned process: |$!|"  \
+    ###                   1>>${log_file} 2>&1
+    exit
+} # is_false foreground
+
+#
+# save our pid
+#
+echo $$ > ${pid_file}
+
+
+#
+# From here on, redirect stdout and stderr to ${log_file}
+#
+exec 3>&1 4>&2  # save copies of stdout and stderr
+exec 1>>${log_file} 2>&1
+# how to restore "normal" stdout and stderr
+# exec 1>&3 2>&4 3>&- 4>&- 
+
+
+# It does not make sense to run: "shutdown-trigger -f &", that is:
+# using the -f option and a terminating & at the same time.
+# We can realize that this was the case when the two following
+# variables are defined as shown:
+# variable     value    meaning
+# ====================================================================
+# foreground   true     the -f option was given
+# BACKGROUND   true     we are nevertheless running in the background (despite
+#                       the -f option)
+#
+doit=false
+is_true foreground && is_true BACKGROUND && doit=true
+${doit} && {
+echo "The -f option does not make sense with a terminating &"
+exit 1
+} # ${doit} echo "The -f option does not mak
+
+
+
+#
+# Run a ncat listening server (when DAEMONIZED)
+#
+### DEBUG && debug_message "foreground: |${foreground}|" 1>>${log_file} 2>&1
+is_false foreground && {
+    ### DEBUG && debug_message "INSIDE is_false: foreground: |${foreground}|" 1>>${log_file} 2>&1
+    sigusr1 () {
+        echo "sigusr1: called"
+        ### DEBUG && debug_message "sigusr1: called"
+        # this is NOT local, so it will be available to the caller
+        client_message=$(cat ${ncat_message_file} 2>/dev/null)
+        echo "sigusr1: client message: ${client_message}"
+        ### DEBUG && debug_message "sigusr1: client message: ${client_message}"
+        ### DEBUG && debug_message "sigusr1: cp /dev/null ${ncat_message_file}"
+        cp /dev/null ${ncat_message_file}
+        return 0
+    }
+    trap 'sigusr1' 10 # trap SIGUSR1 signal from client
+    # trap "debug_message \"got USR1 signal\"" 10
+    test "${ncat_port_number}" -lt 0 && {
+        # pick the first available port above 38000
+        declare -i counter
+        counter=0
+        while lsof -i :$((38000+${counter})) 1>/dev/null 2>&1
+        do :
+           counter+=1
+        done
+        ncat_port_number=$((38000+${counter}))
+    } # test "${ncat_port_number}" -lt 0
+    ### DEBUG && debug_message "starting ncat on port ${ncat_port_number}"
+    ncat localhost -l -p ${ncat_port_number} \
+          -o ${ncat_message_file} -k 1>/dev/null 2>&1 &
+    echo "${ncat_port_number}" > ${ncat_port_file}
+} # is_false foreground
+
+#
+# Main endless loop:
+#       set time_interval
+#       |---set dot_group_marker
+#       |---set every_n_dots
+#       |---set dot_counter=1
+#       |---set global_dot_counter=1
+#       |---set dots_per_line
+#       |---dots_per_line_counter=1
+#       |---the_time=current_time
+#       |---print the_time (and newline)
+#       |---print global_dot_counter
+#       `---LOOP
+#           |---LOOP
+#           |   |---poll the trigger device
+#           |   |---success?
+#           |   |---YES
+#           |   |   |---dot_counter+=1
+#           |   |   |---dot=.
+#           |   |   |---dot_counter>=every_n_dots?
+#           |   |   |   |---YES
+#           |   |   |   |---dot=dot_group_marker
+#           |   |   |   `---dot_counter=1
+#           |   |   |---print dot on this line
+#           |   |   |---global_dot_counter+=1
+#           |   |   |---sleep for sleep_time seconds
+#           |   |   |---dots_per_line_counter+=1
+#           |   |   `---dots_per_line_counter>=dots_per_line?
+#           |   |       `---YES
+#           |   |           |---newline
+#           |   |           `---BREAK
+#           |   |---NO
+#           |   |   |---log shutdown message
+#           |   |   |---shutdown remote hosts
+#           |   |   `---shutdown ourselves
+#           |   `---END LOOP
+#           |---dot_counter=1
+#           |---dots_per_line_counter=1
+#           |---current_time=$(date '+%s')
+#           |---current_time>=the_time+time_interval?
+#           |   `---YES
+#           |       |---print the_time (and newline)
+#           |       `---the_time=current_time
+#           |---print global_dot_counter (no newline)
+#           `---END LOOP
+#
+
+
+### DEBUG: restore when done
+### declare -i time_interval=3600*24
+### dot_group_marker='|'
+### declare -i every_n_dots=10
+### declare -i dot_counter=1
+### declare -i dots_per_line_counter=1
+### declare -i global_dot_counter=1
+### declare -i dots_per_line=80
+### declare -i the_time=$(date "+%s")
+### declare -i current_time
+
+declare -i time_interval=30
+dot_group_marker='|'
+declare -i every_n_dots=10
+declare -i dot_counter=1
+declare -i dots_per_line_counter=1
+declare -i global_dot_counter=1
+declare -i dots_per_line=20
+declare -i the_time=$(date "+%s")
+declare -i current_time
+
+echo
+echo "STARTING"
+date --iso-8601="seconds"
+printf "%8d " ${global_dot_counter}
+while true
+do :
+   # true
+   while true
+   do :
+      eval "${trigger_cmd}"
+      result=${?}
+      glob 0 ${result} && {
+          dot_counter+=1
+          dot="."
+          test ${dot_counter} -gt ${every_n_dots} && \
+              dot=${dot_group_marker} && dot_counter=1
+          printf "${dot}"
+          sleep ${sleep_time}
+          global_dot_counter+=1
+          dots_per_line_counter+=1
+          test ${dots_per_line_counter} -ge ${dots_per_line} && \
+              echo >>${log_file} && break
+          continue
+      } # glob 0 ${result}
+      no_glob 0 "${result}" && {
+          # exec >>${log_file} 2>&1
+          # set -x
+          # POWER FAILURE: SHUTDOWN ASAP!
+          echo
+          echo "$(date --iso-8601="seconds") SHUTDOWN"
+          for ii in $(seq 0 $((${#remote_host[*]}-1)))
+          do :
+             echo "${remote_host[${ii}]}"
+             eval "${remote_host[${ii}]}"
+          done
+          # last thing:
+          echo "exec shutdown -h now"
+          exec shutdown -h now
+          # exit # NO-NO!! the shutdown command won't have time to complete!
+      } # no_glob 0 "${result}"
+   done # while true
+   dot_counter=1
+   dots_per_line_counter=1
+   current_time=$(date "+%s") 
+   test ${current_time} -ge $((${the_time}+${time_interval})) && {
+       date --iso-8601="seconds"
+       the_time=${current_time}
+   } #    test ${current_time} -ge $((${the_tim
+   printf "%8d " ${global_dot_counter}
+done # while true
+
+  #############
+} # ${server} #
+  #############
+
+
+##########
+# client #
+##########
+${client} && {
+
+  ##########
+} # client #
+  ##########
