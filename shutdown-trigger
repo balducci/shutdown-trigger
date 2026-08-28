@@ -92,6 +92,50 @@ return 0
 
 } # function prepend_state_dir ends here
 
+############
+# FUNCTION #
+############
+update_state () {
+# Save current state to state_file.
+# When $1=dump, dump current state to stdout
+
+    no_glob dump "${1}" && {
+        (cat > $(prepend_state_dir ${state_file}))<<EOF
+foreground=${foreground}
+debug=${debug}
+pid_file=${pid_file}
+pid=${pid}
+log_file=${log_file}
+ncat_pid=${ncat_pid}
+ncat_port_number=${ncat_port_number}
+ncat_message_file=${ncat_message_file}
+runtime_state_dir=${runtime_state_dir}
+state_file=${state_file}
+sleep_time=${sleep_time}
+EOF
+    } # no_glob dump "${1}"
+
+    glob dump "${1}" && {
+echo
+echo "current state:"
+echo "$(echo "current state:"|sed -E -e's|.|-|g')"
+        (cat|column -t) <<EOF
+foreground ${foreground}
+debug ${debug}
+pid_file ${pid_file}
+pid ${pid}
+log_file ${log_file}
+ncat_pid ${ncat_pid}
+ncat_port_number ${ncat_port_number}
+ncat_message_file ${ncat_message_file}
+runtime_state_dir ${runtime_state_dir}
+state_file ${state_file}
+sleep_time ${sleep_time}
+EOF
+    } # glob dump "${1}"
+    return 0
+} # function update_state ends here
+
 
 
 ########################################
@@ -146,6 +190,7 @@ ncat_port_file=shutdown-trigger.port
 ncat_message_file=shutdown-trigger.ncat
 quit=false
 runtime_state_dir=/var/run/shutdown-trigger
+state_file=state # relative to the runtime state directory
 sleep_time=30
 trigger_cmd='lsusb -d 174c:55aa 1>/dev/null 2>&1' # manhattan docking station
                                                   # (ASMedia Technology)
@@ -303,9 +348,9 @@ COMMENT_END
 is_false foreground && is_false BACKGROUND && {
         # touch ${runtime_state_dir}/bg.lock
         # either nohup...
-        >/dev/null 2>&1 nohup ${0} BACKGROUND "${cmd_line_args}" &
+        >/dev/null 2>&1 nohup ${0} "${cmd_line_args}" BACKGROUND &
         # ... or simple shell background submission ?
-        # ${0} BACKGROUND "${cmd_line_args}" &
+        # ${0} "${cmd_line_args}" BACKGROUND &
 
         DEBUG && \
                 debug_message "pid of background spawned process: |$!|"  \
@@ -318,9 +363,8 @@ is_false foreground && is_false BACKGROUND && {
 #
 # save our pid
 #
-echo $$ > $(prepend_state_dir ${pid_file})
-
-
+pid=$$
+echo ${pid} > $(prepend_state_dir ${pid_file})
 
 #
 # From here on, redirect stdout and stderr to ${log_file}
@@ -360,20 +404,41 @@ is_false foreground && {
     # FUNCTION #
     ############
     sigusr1 () {
+        #
+        # This is the trap when the server is sent an USR1 signal. Here
+        # we parse client messages and take corresponding actions
+        #        
+
+        DEBUG && debug_message "$(printf "\n")"
         DEBUG && debug_message "sigusr1: called"
+        # re-load state (is this a good idea?)
+        DEBUG && debug_message "sigusr1: reloading state"
+        . $(prepend_state_dir ${state_file})
+        DEBUG && debug_message "$(update_state dump)"
         # this is NOT local, so it will be available to the caller
         client_message=$(cat $(prepend_state_dir \
                                    ${ncat_message_file}) 2>/dev/null)
         DEBUG && debug_message "sigusr1: client message: |${client_message}|"
-        _A="sigusr1: cp /dev/null $(prepend_state_dir ${ncat_message_file})"
+        DEBUG && debug_message "clearing ncat message file:"
+        _A="sigusr1: > $(prepend_state_dir ${ncat_message_file})"
         DEBUG && debug_message ${_A}
-        cp /dev/null $(prepend_state_dir ${ncat_message_file})
-
+        # clear ncat_message_file, ready for the next message
+        >$(prepend_state_dir ${ncat_message_file})
         case "${client_message}" in
             *quit*)
-                echo kill $(cat $(prepend_state_dir ncat.pid))
-                echo rm $(prepend_state_dir bg.lock)
-                echo rm $(prepend_state_dir ${pid_file})
+                DEBUG && debug_message "killing listening ncat"
+                DEBUG && debug_message "kill ${ncat_pid}"
+                kill ${ncat_pid}
+                DEBUG && debug_message "removing ncat message file"
+                DEBUG && debug_message \
+                             "rm $(prepend_state_dir ${ncat_message_file})"
+                rm $(prepend_state_dir ${ncat_message_file})
+                DEBUG && debug_message "removing pid file"
+                DEBUG && debug_message "rm $(prepend_state_dir ${pid_file})"
+                rm $(prepend_state_dir ${pid_file})
+                DEBUG && debug_message "exiting"
+                DEBUG && debug_message "exit 0"
+                exit 0
                 ;;
             *)
                 ;;
@@ -397,9 +462,15 @@ is_false foreground && {
     ncat localhost -l -p ${ncat_port_number} \
          -o $(prepend_state_dir ${ncat_message_file}) -k 1>/dev/null 2>&1 &
     ncat_pid=$!
-    echo "${ncat_pid}" > $(prepend_state_dir ncat.pid)
-    echo "${ncat_port_number}" > $(prepend_state_dir ${ncat_port_file})
+    # echo "${ncat_pid}" > $(prepend_state_dir ncat.pid)
+    # echo "${ncat_port_number}" > $(prepend_state_dir ${ncat_port_file})
 } # is_false foreground
+
+#
+# Update state file
+#
+update_state
+update_state dump
 
 
 #
@@ -534,53 +605,62 @@ ${client} && {
 DEBUG && debug_message "running as client"
 
 #
+# Load state
+#
+. $(prepend_state_dir ${state_file})
+DEBUG && debug_message "$(update_state dump)"
+
+#
 # sanity checks
+# We need:
+#  - pid
+#  - ncat_port_number
+#  - ncat_message_file
+# properly defined
 #
-test -r $(prepend_state_dir ${ncat_port_file})
+
+# pid
+is_def pid
 Assert "$? -eq 0" ${LINENO} "
 
 shutdown-trigger (client): 
 ERROR
-ncat_port_file: |${ncat_port_file}|
-is unreadable
+pid: undefined
 
 " # Assert
 
-test -r $(prepend_state_dir ${pid_file})
+# ncat_port_number
+is_def ncat_port_number
 Assert "$? -eq 0" ${LINENO} "
 
 shutdown-trigger (client): 
 ERROR
-ncat_port_file: |${pid_file}|
-is unreadable
+ncat_port_number: undefined
 
 " # Assert
 
-#
-# get the pid of the running server
-#
-unset the_pid
-read the_pid < <(cat $(prepend_state_dir ${pid_file}))
-is_def the_pid
+# ncat_message_file
+is_def ncat_message_file
 Assert "$? -eq 0" ${LINENO} "
 
 shutdown-trigger (client): 
 ERROR
-the_pid: undefined
+ncat_message_file: undefined
 
 " # Assert
 
-#
-# get the port number of the listening ncat
-#
-read the_port < <(cat $(prepend_state_dir ${ncat_port_file}))
+
 
 ############
 # FUNCTION #
 ############
 send () {
-echo "${1}"|ncat localhost ${the_port}
-kill -10 "${the_pid}"
+# send to the listening ncat
+echo "${1}"|ncat localhost ${ncat_port_number}
+# SIGUSR1 (10) is trapped by the server code and will call the sigusr1
+# function which parses the messages from the client and takes
+# corresponding actions
+kill -10 "${pid}"
 return 0
 } # function send ends here
 
