@@ -152,7 +152,13 @@ trigger_cmd='lsusb -d 174c:55aa 1>/dev/null 2>&1' # manhattan docking station
 
 
 #
-# define client/server role
+# See if we are running in the background
+#
+BACKGROUND=false
+echo "${@}"|grep -Esq BACKGROUND && BACKGROUND=true
+
+#
+# Intercept the -b option in advance to define client/server role
 #
 echo "${@}"|grep -Esq '(^|[[:space:]])-b[[:space:]]?' && client=true
 # run as a client also when called as sdtc
@@ -188,6 +194,7 @@ cannot be found
 # getopts below will consume "${@}"; but we need a copy of it (possibly
 # with some options stripped off) if we will spawn a server daemon
 cmd_line_args="${@}"
+
 
 # get remaining command line options
 # sleep_time_default=30
@@ -246,12 +253,12 @@ mkdir -p ${runtime_state_dir}
 # show up (in the ps command and/or in /proc/$$/stat)
 sleep 2
 
-# we rely on ${runtime_state_dir}/bg.lock to know if we are already
+COMMENT_START <<"COMMENT_END"
+# we rely upon ${runtime_state_dir}/bg.lock to know if we are already
 # running in the bacground
 BACKGROUND=false
 test -e $(prepend_state_dir bg.lock) && BACKGROUND=true
 
-COMMENT_START <<"COMMENT_END"
 # In general, a process can know if it is running in the background by
 # asserting equality of fields 4 (ppid) and 8 (tpgid) of its
 # /proc/<pid>/stat file (man proc_pid_stat). However, if we had been
@@ -289,11 +296,16 @@ COMMENT_END
 # Note: we run the daemonized instance with "${cmd_line_args}" instead
 # of "${@}", because the original "${@}" has been consumed by getopts
 # above
+# We pass the private (ie not available to the user) command line
+# option BACKGROUND to make the spawned instance know that it is
+# running in the background
 #
 is_false foreground && is_false BACKGROUND && {
-        touch ${runtime_state_dir}/bg.lock
-        >/dev/null 2>&1 nohup ${0} "${cmd_line_args}" &  # either nohup...
-        # ${0}  "${cmd_line_args}" &  # ... or simple shell background submission
+        # touch ${runtime_state_dir}/bg.lock
+        # either nohup...
+        >/dev/null 2>&1 nohup ${0} BACKGROUND "${cmd_line_args}" &
+        # ... or simple shell background submission ?
+        # ${0} BACKGROUND "${cmd_line_args}" &
 
         DEBUG && \
                 debug_message "pid of background spawned process: |$!|"  \
