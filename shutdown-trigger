@@ -352,14 +352,14 @@ is_false foreground && {
         # this is NOT local, so it will be available to the caller
         client_message=$(cat $(prepend_state_dir \
                                    ${ncat_message_file}) 2>/dev/null)
-        DEBUG && debug_message "sigusr1: client message: ${client_message}"
+        DEBUG && debug_message "sigusr1: client message: |${client_message}|"
         _A="sigusr1: cp /dev/null $(prepend_state_dir ${ncat_message_file})"
         DEBUG && debug_message ${_A}
         cp /dev/null $(prepend_state_dir ${ncat_message_file})
 
         case "${client_message}" in
             *quit*)
-                echo kill $(cat $($(prepend_state_dir ncat.pid)))
+                echo kill $(cat $(prepend_state_dir ncat.pid))
                 echo rm $(prepend_state_dir bg.lock)
                 echo rm $(prepend_state_dir ${pid_file})
                 ;;
