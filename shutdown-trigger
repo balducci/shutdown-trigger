@@ -31,12 +31,12 @@ COMMENT_START <<"COMMENT_END"
           |                        +----+-----+
           |                        |   UPS    |
           |                        +----+-----+
-          |                             |
-          |                             |
-          |                             |
+          |                             |              
+          |                             |              
+          |                             |              
  +--------+---------+    USB       +----+---------------+
  |  trigger device  +--------------+      computer      |
- +------------------+              |  shutdown-trigger  |
+ +------------------+              | (shutdown-trigger) |
                                    +--------------------+
 COMMENT_END
 
@@ -78,6 +78,7 @@ shutdown-trigger <options>
 -r <file>  where to store port number for client/server communication
            (relative to the runtime state directory)
            default: shutdown-trigger.port
+-S         client: dump state file to stdout
 -s <n>     sleep n seconds between successive
            polls of the trigger device
            default: 30
@@ -119,6 +120,9 @@ update_state () {
 # Save current state to state_file.
 # When $1=dump, dump current state to stdout
 
+#####################
+# update state file #
+#####################
     no_glob dump "${1}" && {
         (cat > $(prepend_state_dir ${state_file}))<<EOF
 foreground=${foreground}
@@ -135,6 +139,9 @@ sleep_time=${sleep_time}
 EOF
     } # no_glob dump "${1}"
 
+################################
+# dump current state to stdout #
+################################
     glob dump "${1}" && {
 echo
 echo "current state:"
@@ -142,15 +149,15 @@ echo "$(echo "current state:"|sed -E -e's|.|-|g')"
         (cat|column -t) <<EOF
 foreground ${foreground}
 debug ${debug}
-pid_file ${pid_file}
 pid ${pid}
-log_file ${log_file}
 ncat_pid ${ncat_pid}
 ncat_port_number ${ncat_port_number}
-ncat_message_file ${ncat_message_file}
+sleep_time ${sleep_time}
+log_file ${log_file}
 runtime_state_dir ${runtime_state_dir}
 state_file ${state_file}
-sleep_time ${sleep_time}
+pid_file ${pid_file}
+ncat_message_file ${ncat_message_file}
 EOF
     } # glob dump "${1}"
     return 0
@@ -209,6 +216,7 @@ ncat_port_file=shutdown-trigger.port
 # (relative to the runtime state directory)
 ncat_message_file=shutdown-trigger.ncat
 quit=false
+dump_state=false
 runtime_state_dir=/var/run/shutdown-trigger
 state_file=state # relative to the runtime state directory
 sleep_time=30
@@ -268,10 +276,11 @@ cmd_line_args="${@}"
 # unset sleep_time_cmd_line
 # unset log_file_cmd_line
 # unset pid_file_cmd_line
-while getopts "bCc:dfhl:P:p:qr:s:" _opt
+while getopts "bCc:dfhl:P:p:qr:Ss:" _opt
 do :
 glob C "${_opt}" && dump_conf=true
 glob P "${_opt}" && ncat_port_number=${OPTARG}
+glob S "${_opt}" && dump_state=true
 glob d "${_opt}" && debug=true
 glob f "${_opt}" && foreground=true
 glob h "${_opt}" && print_help
@@ -291,13 +300,16 @@ shift $((OPTIND-1))
 #
 is_true dump_conf && {
 (cat|column -t|sed -E -e's|,@,| |g') <<EOF
-whoami:   $(whoami)
 configuration_file: ${configuration_file}
 foreground: ${foreground}
 log_file: ${log_file}
-pid_file: ${pid_file}
+ncat_port_number: ${ncat_port_number}
 sleep_time: ${sleep_time}
 trigger_cmd: $(echo ${trigger_cmd}|sed -E -e's|[[:space:]]|,@,|g')
+runtime_state_dir: ${runtime_state_dir}
+ncat_message_file: ${ncat_message_file}
+pid_file: ${pid_file}
+state_file: ${state_file}
 EOF
 exit 0
 } # is_true dump_conf
@@ -690,6 +702,10 @@ return 0
 #
 ${quit} && send "quit"
 
+#
+# dump current state to stdout
+#
+${dump_state} && update_state dump
 
   ##########
 } # client #
