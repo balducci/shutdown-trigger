@@ -2,22 +2,23 @@
 #
 # source functions
 #
-for f in `ls ${HOME}/scripts/sh-funcs/*.sh 2>/dev/null`;do . $f;done
+# NOTE:      vvvvvvvvvvvvvv NOT $HOME (this is run at boot time!)
+for f in `ls /home/balducci/scripts/sh-funcs/*.sh 2>/dev/null`;do . $f;done
 
 COMMENT_START <<"COMMENT_END"
 
-    TODO
-    |---start/stop script in /etc/init.d
-    `---FIXME
-        |---the DEBUG/debug_message machinery is UTTERLY broken
-        `---ncat is not killed when shutdown-trigger is killed
+TODO:
+      make these configurable:
+      |---time_interval=3600*24
+      |---dot_group_marker='|'
+      |---every_n_dots=10
+      `---dots_per_line=70
 
 2026-08-19
 There was a power fail and shutdown-trigger was up and running, still
 under development, but functional.
 And it worked perfectly: I found all the three boxes (lin2/bld4/baldx)
 gently shutdown. Very good!
-
 COMMENT_END
 
 COMMENT_START <<"COMMENT_END"
@@ -553,26 +554,26 @@ update_state dump
 #
 
 
-### DEBUG: restore when done
-### declare -i time_interval=3600*24
-### dot_group_marker='|'
-### declare -i every_n_dots=10
-### declare -i dot_counter=1
-### declare -i dots_per_line_counter=1
-### declare -i global_dot_counter=1
-### declare -i dots_per_line=80
-### declare -i the_time=$(date "+%s")
-### declare -i current_time
-
-declare -i time_interval=30
+declare -i time_interval=3600*24
 dot_group_marker='|'
 declare -i every_n_dots=10
 declare -i dot_counter=1
 declare -i dots_per_line_counter=1
 declare -i global_dot_counter=1
-declare -i dots_per_line=20
+declare -i dots_per_line=70
 declare -i the_time=$(date "+%s")
 declare -i current_time
+
+# # uncomment when debugging
+# declare -i time_interval=30
+# dot_group_marker='|'
+# declare -i every_n_dots=10
+# declare -i dot_counter=1
+# declare -i dots_per_line_counter=1
+# declare -i global_dot_counter=1
+# declare -i dots_per_line=20
+# declare -i the_time=$(date "+%s")
+# declare -i current_time
 
 echo
 echo "STARTING"
