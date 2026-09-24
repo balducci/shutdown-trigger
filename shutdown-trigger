@@ -62,9 +62,6 @@ shutdown-trigger <options>
 -c <file>  source this configuration file
            default: /etc/shutdown-trigger.conf
 -d         verbosely print debugging messages (when run as a server)
--D         runtime state directory: where to dump various files
-           containing runtime state information
-           default: /var/run/shutdown-trigger
 -f         run in the foreground and do not daemonize
            default: after startup, rerun an instance in the background
 -h         print help message and exit
@@ -73,8 +70,6 @@ shutdown-trigger <options>
 -P <port number>
            port number for client/server communication
            defaul: first available port above 38000
--p <file>  where to save our pid (relative to the runtime state directory)
-           default: shutdown-trigger.pid
 -q         client: terminate the running instance
 -r <file>  where to store port number for client/server communication
            (relative to the runtime state directory)
@@ -326,7 +321,7 @@ cmd_line_args="${@}"
 # unset sleep_time_cmd_line
 # unset log_file_cmd_line
 # unset pid_file_cmd_line
-while getopts "bCc:dfhl:P:p:qr:Ss:" _opt
+while getopts "bCc:dfhl:P:qr:Ss:" _opt
 do :
 glob C "${_opt}" && dump_conf=true
 glob P "${_opt}" && ncat_port_number=${OPTARG}
@@ -335,7 +330,6 @@ glob d "${_opt}" && debug=true
 glob f "${_opt}" && foreground=true
 glob h "${_opt}" && print_help
 glob l "${_opt}" && log_file=${OPTARG}
-glob p "${_opt}" && pid_file=${OPTARG}
 glob q "${_opt}" && quit=true
 glob r "${_opt}" && ncat_port_file=${OPTARG}
 glob s "${_opt}" && sleep_time=${OPTARG}
@@ -426,7 +420,7 @@ sleep 2
 is_false foreground && is_false BACKGROUND && {
         # touch ${runtime_state_dir}/bg.lock
         # either nohup...
-        >/dev/null 2>&1 nohup ${0} "${cmd_line_args}" BACKGROUND &
+        >/dev/null 2>&1 nohup ${0} ${cmd_line_args} BACKGROUND &
         # ... or simple shell background submission ?
         # ${0} "${cmd_line_args}" BACKGROUND &
 
