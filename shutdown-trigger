@@ -210,6 +210,22 @@ sigusr1 () {
 }
 trap 'sigusr1' 10 # trap SIGUSR1 signal from client
 
+############
+# FUNCTION #
+############
+sigterm () {
+. $(prepend_state_dir ${state_file})
+kill -1 ${ncat_pid}
+rm -f $(prepend_state_dir ${ncat_message_file})
+rm -f $(prepend_state_dir ${pid_file})
+echo "CLOSING"
+exit 0
+return 0
+
+} # function sigterm ends here
+
+trap 'sigterm' 15  # trap SIGTERM
+
 ########################################
 # preliminary sanity checks start here #
 ########################################
@@ -583,7 +599,8 @@ do :
           test ${dot_counter} -gt ${every_n_dots} && \
               dot=${dot_group_marker} && dot_counter=1
           printf "${dot}"
-          sleep ${sleep_time}
+          sleep ${sleep_time} &
+          wait $!
           global_dot_counter+=1
           dots_per_line_counter+=1
           test ${dots_per_line_counter} -ge ${dots_per_line} && \
