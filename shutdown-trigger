@@ -241,25 +241,6 @@ must be run as root
 
 " # Assert
 
-#
-# Make sure that the trigger device is up
-# and running, and that we can poll it
-#
-eval "${trigger_cmd}"
-no_glob 0 ${?} && {
-cat <<EOF
-
-ERROR:
-trigger command: |${trigger_cmd}|
-returned non-null code at start time
-Is the trigger device connected and running?
-FIXME
-
-EOF
-
-exit 1
-} # no_glob 0 ${?}
-
 ######################################
 # preliminary sanity checks end here #
 ######################################
@@ -324,6 +305,37 @@ cannot be found
 
 # now we can source the configuration file
 . ${configuration_file}
+
+#
+# Make sure that the trigger device is up
+# and running, and that we can poll it
+#
+test -z "${trigger_cmd}" && {
+cat <<EOF
+
+ERROR:
+no trigger command has been defined:
+trigger command is an empty string
+FIXME
+
+EOF
+exit 1
+} # test -z "${trigger_cmd}"
+eval "${trigger_cmd}"
+no_glob 0 ${?} && {
+cat <<EOF
+
+ERROR:
+trigger command: |${trigger_cmd}|
+returned non-null code at start time
+Is the trigger device connected and running?
+FIXME
+
+EOF
+
+exit 1
+} # no_glob 0 ${?}
+
 
 # getopts below will consume "${@}"; but we need a copy of it (possibly
 # with some options stripped off) if we will spawn a server daemon
