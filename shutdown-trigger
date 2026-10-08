@@ -380,16 +380,15 @@ trap 'sigusr1' 10 # trap SIGUSR1 signal from client
 ############
 sigterm () {
 . $(prepend_state_dir ${state_file})
-kill -1 ${ncat_pid}
+is_def ncat_pid && kill -1 ${ncat_pid}
 rm -f $(prepend_state_dir ${ncat_message_file})
 rm -f $(prepend_state_dir ${pid_file})
 echo "CLOSING"
 exit 0
-return 0
 
 } # function sigterm ends here
 
-trap 'sigterm' 15  # trap SIGTERM
+trap 'sigterm' 2 15  # trap SIGTERM
 
 ########################################
 # preliminary sanity checks start here #
