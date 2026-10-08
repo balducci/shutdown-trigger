@@ -1,19 +1,5 @@
 #!/bin/bash
 
-# TODO:
-#       make these configurable:
-#       |---time_interval=3600*24
-#       |---dot_group_marker='|'
-#       |---every_n_dots=10
-#       `---dots_per_line=70
-
-# 2026-08-19
-# There was a power fail and shutdown-trigger was up and running, still
-# under development, but functional.
-# And it worked perfectly: I found all the three boxes (lin2/bld4/baldx)
-# gently shutdown. Very good!
-
-
 
 #   +--------------------------------------------------+
 #   |              POWER LINE                          |
@@ -172,16 +158,16 @@ no_glob () {
 ############
 # FUNCTION #
 ############
-IsDef() {
+is_def() {
     local _v
     no_glob _v $1
     Assert "$? -eq 0" ${LINENO} "
-IsDef: _v  is a reserved token  in this function:
+is_def: _v  is a reserved token  in this function:
 please use another variable name
 " # Assert    
     _v=`Variable $1`
     test -n "$_v" && return 0 || return 1
-} # IsDef ends here
+} # is_def ends here
 
 ############
 # FUNCTION #
