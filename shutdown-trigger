@@ -1,47 +1,222 @@
-#!/bin/sh
-#
-# source functions
-#
-# NOTE:      vvvvvvvvvvvvvv NOT $HOME (this is run at boot time!)
-for f in `ls /home/balducci/scripts/sh-funcs/*.sh 2>/dev/null`;do . $f;done
+#!/bin/bash
 
-COMMENT_START <<"COMMENT_END"
+# TODO:
+#       make these configurable:
+#       |---time_interval=3600*24
+#       |---dot_group_marker='|'
+#       |---every_n_dots=10
+#       `---dots_per_line=70
 
-TODO:
-      make these configurable:
-      |---time_interval=3600*24
-      |---dot_group_marker='|'
-      |---every_n_dots=10
-      `---dots_per_line=70
-
-2026-08-19
-There was a power fail and shutdown-trigger was up and running, still
-under development, but functional.
-And it worked perfectly: I found all the three boxes (lin2/bld4/baldx)
-gently shutdown. Very good!
-COMMENT_END
-
-COMMENT_START <<"COMMENT_END"
+# 2026-08-19
+# There was a power fail and shutdown-trigger was up and running, still
+# under development, but functional.
+# And it worked perfectly: I found all the three boxes (lin2/bld4/baldx)
+# gently shutdown. Very good!
 
 
-  +--------------------------------------------------+
-  |              POWER LINE                          |
-  +-------+-----------------------------+------------+
-          |                             |
-          |                             |
-          |                        +----+-----+
-          |                        |   UPS    |
-          |                        +----+-----+
-          |                             |              
-          |                             |              
-          |                             |              
- +--------+---------+    USB       +----+---------------+
- |  trigger device  +--------------+      computer      |
- +------------------+              | (shutdown-trigger) |
-                                   +--------------------+
-COMMENT_END
+
+#   +--------------------------------------------------+
+#   |              POWER LINE                          |
+#   +-------+-----------------------------+------------+
+#           |                             |
+#           |                             |
+#           |                        +----+-----+
+#           |                        |   UPS    |
+#           |                        +----+-----+
+#           |                             |              
+#           |                             |              
+#           |                             |              
+#  +--------+---------+    USB       +----+---------------+
+#  |  trigger device  +--------------+      computer      |
+#  +------------------+              | (shutdown-trigger) |
+#                                    +--------------------+
 
 
+########################################################################
+#                    Convenience functions start here                  #
+########################################################################
+
+############
+# FUNCTION #
+############
+Assert () {
+
+    local message
+
+    E_ASSERT_FAILED=99
+
+
+    #
+    # sanity checks start here
+    #
+    test "$#" -gt 3 && {
+        cat  <<"EOF"
+
+-------------------------
+Assert: ERROR: $# > 3
+-------------------------
+
+EOF
+        exit 1
+    }
+
+
+    test "$#" -lt 1 && {
+        cat  <<"EOF"
+
+-------------------------
+Assert: ERROR: $# < 1
+-------------------------
+
+EOF
+        exit 1
+    }
+    #
+    # sanity checks end here
+    #
+
+    #
+    # behave according to $#
+    #
+    test "$#" -eq 1 && {
+        lineno="not given"
+        message=
+    }
+
+    test "$#" -eq 2 && {
+        echo "$2"|egrep '^[0-9][0-9]*$' 1>/dev/null 2>/dev/null && {
+            # $2 is a pure (integer) number: assume it is LINENO
+            lineno="$2"
+            message=
+        } || {
+            # $2 is NOT a pure (integer) number: assume it is the failure message
+            lineno="not given"
+            message="$2"
+        }
+    } # test "$#" -eq 2
+
+    test "$#" -eq 3 && {
+        lineno="$2"
+        message="$3"
+    }
+
+
+    #   if [ ! $1 ] 
+    if `eval [ ! "$1" ]`
+    then
+        echo "Assertion failed:  $1"
+        echo "File: $0 , line: $lineno"
+        test -n "${message}" && echo "${message}"
+        exit $E_ASSERT_FAILED
+    fi  
+
+    test "${back_to_xtrace}" = "true" && set -x
+
+
+    return 0
+} # function Assert ends here
+
+############
+# FUNCTION #
+############
+Variable() { eval 'echo "$'$1'"'; return 0; }
+
+############
+# FUNCTION #
+############
+is_true() { StringValue "${@}"  true && return 0 || return 1; }
+############
+# FUNCTION #
+############
+is_false() { StringValue "${@}" is not true && return 0 || return 1; }
+
+############
+# FUNCTION #
+############
+glob () {
+
+    local _the_command
+    test $# -eq 2 || {
+        echo "
+
+ERROR:
+glob function called with # of arguments =/= 2
+
+"
+        exit 1
+    }
+    test "$1" != "" || {
+        echo "
+
+ERROR:
+glob function called with empty \$1 argument
+
+"
+        exit 1
+    }
+    _the_command="case \"$2\" in $1)return 0;; *)return 1;;esac"
+    eval ${_the_command}
+} # function glob ends here
+
+############
+# FUNCTION #
+############
+no_glob () {
+    local _res
+    _res=0
+    glob "$@" && _res=1
+    return ${_res}
+} # function no_glob ends here
+
+
+############
+# FUNCTION #
+############
+IsDef() {
+    local _v
+    no_glob _v $1
+    Assert "$? -eq 0" ${LINENO} "
+IsDef: _v  is a reserved token  in this function:
+please use another variable name
+" # Assert    
+    _v=`Variable $1`
+    test -n "$_v" && return 0 || return 1
+} # IsDef ends here
+
+############
+# FUNCTION #
+############
+StringValue() {
+    local _v
+    test "$#" -eq 2 || test "$#" -eq 4 || {
+            cat <<EOF
+StringValue: \$#: $# (should be 2 or 4)
+EOF
+            exit 1
+        }
+    # sanity check
+    no_glob _v $1
+    Assert "$? -eq 0" ${LINENO} "
+StringValue: _v  is a reserved token  in this function:
+please use another variable name
+" # Assert    
+    _v=`Variable $1`
+    # $#==2
+    test "$#" -eq 2 && {
+        test "$_v" = "$2" && return 0 || return 1
+    }
+    # $#==4
+    test "$#" -eq 4 && {
+        test "$2" != "is" || test "$3" != "not" && {
+                cat <<EOF
+StringValue: \$2: $2 (should be is)
+StringValue: \$3: $3 (should be not)
+EOF
+                exit 1
+            }
+        test "$_v" != "$4" && return 0 || return 1
+    } # test "$#" -eq 4
+}
 ############
 # FUNCTION #
 ############
@@ -116,9 +291,9 @@ update_state () {
 # Save current state to state_file.
 # When $1=dump, dump current state to stdout
 
-#####################
-# update state file #
-#####################
+# +-------------------+
+# | update state file |
+# +-------------------+
     no_glob dump "${1}" && {
         (cat > $(prepend_state_dir ${state_file}))<<EOF
 foreground=${foreground}
@@ -135,9 +310,9 @@ sleep_time=${sleep_time}
 EOF
     } # no_glob dump "${1}"
 
-################################
-# dump current state to stdout #
-################################
+# +------------------------------+
+# | dump current state to stdout |
+# +------------------------------+
     glob dump "${1}" && {
 echo
 echo "current state:"
@@ -159,6 +334,10 @@ EOF
     return 0
 } # function update_state ends here
 
+
+########################################################################
+#                     Convenience functions end here                   #
+########################################################################
 
 ############
 # FUNCTION #
@@ -365,8 +544,6 @@ done # while getopts x _opt
 # get remaining arguments (ie those NOT catched by getopts)
 shift $((OPTIND-1))
 
-
-
 #
 # Dump configuration to stdout and exit
 #
@@ -414,7 +591,7 @@ looks like there is a shutdown-trigger
 instance already running with pid
 ${running_pid}
 running multiple shutdown-trigger
-instances won't work and calls fro trouble:
+instances won't work and calls for trouble:
 close the running instance and restart
 
 EOF
@@ -445,6 +622,7 @@ sleep 2
 # option BACKGROUND to make the spawned instance know that it is
 # running in the background
 #
+
 is_false foreground && is_false BACKGROUND && {
         # touch ${runtime_state_dir}/bg.lock
         # either nohup...
