@@ -232,9 +232,6 @@ shutdown-trigger <options>
            port number for client/server communication
            defaul: first available port above 38000
 -q         client: terminate the running instance
--r <file>  where to store port number for client/server communication
-           (relative to the runtime state directory)
-           default: shutdown-trigger.port
 -S         client: dump state file to stdout
 -s <n>     sleep n seconds between successive
            polls of the trigger device
