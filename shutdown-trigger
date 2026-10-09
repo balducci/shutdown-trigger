@@ -417,7 +417,6 @@ foreground=false # default is to daemonize ourselves
 log_file=/var/log/shutdown-trigger.log
 pid_file=shutdown-trigger.pid
 ncat_port_number=-1 # init to impossible value
-ncat_port_file=shutdown-trigger.port
 # ncat dumps received messages in this file
 # (relative to the runtime state directory)
 ncat_message_file=shutdown-trigger.ncat
@@ -513,7 +512,7 @@ cmd_line_args="${@}"
 # unset sleep_time_cmd_line
 # unset log_file_cmd_line
 # unset pid_file_cmd_line
-while getopts "bCc:dfhl:P:qr:Ss:" _opt
+while getopts "bCc:dfhl:P:qSs:" _opt
 do :
 glob C "${_opt}" && dump_conf=true
 glob P "${_opt}" && ncat_port_number=${OPTARG}
@@ -523,7 +522,6 @@ glob f "${_opt}" && foreground=true
 glob h "${_opt}" && print_help
 glob l "${_opt}" && log_file=${OPTARG}
 glob q "${_opt}" && quit=true
-glob r "${_opt}" && ncat_port_file=${OPTARG}
 glob s "${_opt}" && sleep_time=${OPTARG}
 done # while getopts x _opt
 # get remaining arguments (ie those NOT catched by getopts)
@@ -678,7 +676,6 @@ is_false foreground && {
          -o $(prepend_state_dir ${ncat_message_file}) -k 1>/dev/null 2>&1 &
     ncat_pid=$!
     # echo "${ncat_pid}" > $(prepend_state_dir ncat.pid)
-    # echo "${ncat_port_number}" > $(prepend_state_dir ${ncat_port_file})
 } # is_false foreground
 
 #
