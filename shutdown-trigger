@@ -1,23 +1,6 @@
 #!/bin/bash
 
 
-#   +--------------------------------------------------+
-#   |              POWER LINE                          |
-#   +-------+-----------------------------+------------+
-#           |                             |
-#           |                             |
-#           |                        +----+-----+
-#           |                        |   UPS    |
-#           |                        +----+-----+
-#           |                             |              
-#           |                             |              
-#           |                             |              
-#  +--------+---------+    USB       +----+---------------+
-#  |  trigger device  +--------------+      computer      |
-#  +------------------+              | (shutdown-trigger) |
-#                                    +--------------------+
-
-
 ########################################################################
 #                    Convenience functions start here                  #
 ########################################################################
@@ -261,6 +244,22 @@ debug_message () {
 ############
 # FUNCTION #
 ############
+Die () {
+
+echo "
+
+ERROR:
+$(echo "${*}")
+
+"
+exit 1
+
+} # function Die ends here
+
+
+############
+# FUNCTION #
+############
 prepend_state_dir () {
 echo $(realpath -s ${runtime_state_dir}/${1})
 return 0
@@ -408,8 +407,13 @@ must be run as root
 
 # default values here
 client=false
+declare -i date_time_interval=3600*24
 debug=false
+dot_char="."
+dot_group_marker='|'
+declare -i dots_per_line=70
 dump_conf=false
+declare -i every_n_dots=10
 foreground=false # default is to daemonize ourselves
 log_file=/var/log/shutdown-trigger.log
 pid_file=shutdown-trigger.pid
@@ -509,20 +513,55 @@ cmd_line_args="${@}"
 # unset sleep_time_cmd_line
 # unset log_file_cmd_line
 # unset pid_file_cmd_line
-while getopts "bCc:dfhl:P:qSs:" _opt
+while getopts "bCc:dD:e:fg:hL:l:P:qSs:t:" _opt
 do :
 glob C "${_opt}" && dump_conf=true
+glob D "${_opt}" && dot_char=${OPTARG}
+glob L "${_opt}" && dots_per_line=${OPTARG}
 glob P "${_opt}" && ncat_port_number=${OPTARG}
 glob S "${_opt}" && dump_state=true
 glob d "${_opt}" && debug=true
+glob e "${_opt}" && every_n_dots=${OPTARG}
 glob f "${_opt}" && foreground=true
+glob g "${_opt}" && dot_group_marker=${OPTARG}
 glob h "${_opt}" && print_help
 glob l "${_opt}" && log_file=${OPTARG}
 glob q "${_opt}" && quit=true
 glob s "${_opt}" && sleep_time=${OPTARG}
+glob t "${_opt}" && date_time_interval=${OPTARG}
 done # while getopts x _opt
 # get remaining arguments (ie those NOT catched by getopts)
 shift $((OPTIND-1))
+
+#
+# every_n_dots is declared as -i
+#
+test "${every_n_dots}" -le 0 && {
+Die "every_n_dots: $(echo "${every_n_dots}")
+Invalid value: must be a positive integer
+"
+} # test "${every_n_dots}" -le 0
+
+
+#
+# dots_per_line is declared as -i
+#
+test "${dots_per_line}" -le 0 && {
+Die "dots_per_line: $(echo "${dots_per_line}")
+Invalid value: must be a positive integer
+"
+} # test "${dots_per_line}" -le 0
+
+
+#
+# date_time_interval is declared as -i
+#
+test "${date_time_interval}" -le 0 && {
+Die "date_time_interval: $(echo "${date_time_interval}")
+Invalid value: must be a positive integer
+"
+} # test "${date_time_interval}" -le 0
+
 
 #
 # Dump configuration to stdout and exit
@@ -684,7 +723,7 @@ update_state dump
 
 #
 # Main endless loop:
-#       set time_interval
+#       set date_time_interval
 #       |---set dot_group_marker
 #       |---set every_n_dots
 #       |---set dot_counter=1
@@ -700,10 +739,10 @@ update_state dump
 #           |   |---success?
 #           |   |---YES
 #           |   |   |---dot_counter+=1
-#           |   |   |---dot=.
+#           |   |   |---dot_char=.
 #           |   |   |---dot_counter>=every_n_dots?
 #           |   |   |   |---YES
-#           |   |   |   |---dot=dot_group_marker
+#           |   |   |   |---dot_char=dot_group_marker
 #           |   |   |   `---dot_counter=1
 #           |   |   |---print dot on this line
 #           |   |   |---global_dot_counter+=1
@@ -721,7 +760,7 @@ update_state dump
 #           |---dot_counter=1
 #           |---dots_per_line_counter=1
 #           |---current_time=$(date '+%s')
-#           |---current_time>=the_time+time_interval?
+#           |---current_time>=the_time+date_time_interval?
 #           |   `---YES
 #           |       |---print the_time (and newline)
 #           |       `---the_time=current_time
@@ -730,18 +769,18 @@ update_state dump
 #
 
 
-declare -i time_interval=3600*24
-dot_group_marker='|'
-declare -i every_n_dots=10
+# declare -i date_time_interval=3600*24
+# dot_group_marker='|'
+# declare -i every_n_dots=10
 declare -i dot_counter=1
 declare -i dots_per_line_counter=1
 declare -i global_dot_counter=1
-declare -i dots_per_line=70
+# declare -i dots_per_line=70
 declare -i the_time=$(date "+%s")
 declare -i current_time
 
 # # uncomment when debugging
-# declare -i time_interval=30
+# declare -i date_time_interval=30
 # dot_group_marker='|'
 # declare -i every_n_dots=10
 # declare -i dot_counter=1
@@ -764,7 +803,7 @@ do :
       result=${?}
       glob 0 ${result} && {
           dot_counter+=1
-          dot="."
+          dot=${dot_char}
           test ${dot_counter} -gt ${every_n_dots} && \
               dot=${dot_group_marker} && dot_counter=1
           printf "${dot}"
@@ -772,7 +811,7 @@ do :
           wait $!
           global_dot_counter+=1
           dots_per_line_counter+=1
-          test ${dots_per_line_counter} -ge ${dots_per_line} && \
+          test ${dots_per_line_counter} -gt ${dots_per_line} && \
               echo >>${log_file} && break
           continue
       } # glob 0 ${result}
@@ -796,7 +835,7 @@ do :
    dot_counter=1
    dots_per_line_counter=1
    current_time=$(date "+%s")
-   test ${current_time} -ge $((${the_time}+${time_interval})) && {
+   test ${current_time} -ge $((${the_time}+${date_time_interval})) && {
        date --iso-8601="seconds"
        the_time=${current_time}
    } #    test ${current_time} -ge $((${the_tim
