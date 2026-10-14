@@ -322,6 +322,7 @@ EOF
 # FUNCTION #
 ############
 out_var () {
+# dump the value of the variables whose names (strings) are given as arguments
 for V in ${*}
 do :
 echo ${V} : ${!V}
