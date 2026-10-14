@@ -88,7 +88,8 @@ EOF
 ############
 # FUNCTION #
 ############
-Variable() { eval 'echo "$'$1'"'; return 0; }
+# Variable() { eval 'echo "$'$1'"'; return 0; }
+Variable() { local _v=${1}; echo ${!_v}; return 0; }
 
 ############
 # FUNCTION #
@@ -317,6 +318,17 @@ EOF
 } # function update_state ends here
 
 
+############
+# FUNCTION #
+############
+out_var () {
+for V in ${*}
+do :
+echo ${V} : ${!V}
+done|column -t
+return 0
+} # function out_var ends here
+
 ########################################################################
 #                     Convenience functions end here                   #
 ########################################################################
@@ -386,6 +398,28 @@ exit 0
 
 trap 'sigterm' 2 15  # trap SIGTERM
 
+############
+# FUNCTION #
+############
+dump_conf_function () {
+# dump current configuration, that is: 
+(cat|column -t|sed -E -e's|,@,| |g') <<EOF
+configuration_file: ${configuration_file}
+foreground: ${foreground}
+log_file: ${log_file}
+ncat_port_number: ${ncat_port_number}
+sleep_time: ${sleep_time}
+trigger_cmd: $(echo ${trigger_cmd}|sed -E -e's|[[:space:]]|,@,|g')
+runtime_state_dir: ${runtime_state_dir}
+ncat_message_file: ${ncat_message_file}
+pid_file: ${pid_file}
+state_file: ${state_file}
+EOF
+return 0
+
+} # function dump_conf_function ends here
+
+
 ########################################
 # preliminary sanity checks start here #
 ########################################
@@ -406,6 +440,7 @@ must be run as root
 ######################################
 
 # default values here
+auto_client=stdc
 client=false
 declare -i date_time_interval=3600*24
 debug=false
@@ -440,8 +475,6 @@ echo "${@}"|grep -Esq BACKGROUND && BACKGROUND=true
 # Intercept the -b option in advance to define client/server role
 #
 echo "${@}"|grep -Esq '(^|[[:space:]])-b[[:space:]]?' && client=true
-# run as a client also when called as sdtc
-glob sdtc $(basename "${0}") && client=true
 # set also this variable for convenience
 server=true
 ${client} && server=false
@@ -470,12 +503,24 @@ cannot be found
 # now we can source the configuration file
 . ${configuration_file}
 
+# run as a client also when called as ${auto_client}; this latter is
+# defined in the configuration file only (ie, no command line
+# available), so we must check for it here, after reading the
+# configuration file
+glob "${auto_client}" $(basename "${0}") && client=true
+# set also this variable for convenience
+server=true
+${client} && server=false
+
+
+
 #
 # Make sure that the trigger device is up
 # and running, and that we can poll it
 #
-test -z "${trigger_cmd}" && {
-cat <<EOF
+${server} && { 
+    test -z "${trigger_cmd}" && {
+        cat <<EOF
 
 ERROR:
 no trigger command has been defined:
@@ -483,11 +528,11 @@ trigger command is an empty string
 FIXME
 
 EOF
-exit 1
-} # test -z "${trigger_cmd}"
-eval "${trigger_cmd}"
-no_glob 0 ${?} && {
-cat <<EOF
+        exit 1
+    } # test -z "${trigger_cmd}"
+    eval "${trigger_cmd}"
+    no_glob 0 ${?} && {
+        cat <<EOF
 
 ERROR:
 trigger command: |${trigger_cmd}|
@@ -497,9 +542,9 @@ FIXME
 
 EOF
 
-exit 1
-} # no_glob 0 ${?}
-
+        exit 1
+    } # no_glob 0 ${?}
+} # ${server} 
 
 # getopts below will consume "${@}"; but we need a copy of it (possibly
 # with some options stripped off) if we will spawn a server daemon
@@ -567,18 +612,7 @@ Invalid value: must be a positive integer
 # Dump configuration to stdout and exit
 #
 is_true dump_conf && {
-(cat|column -t|sed -E -e's|,@,| |g') <<EOF
-configuration_file: ${configuration_file}
-foreground: ${foreground}
-log_file: ${log_file}
-ncat_port_number: ${ncat_port_number}
-sleep_time: ${sleep_time}
-trigger_cmd: $(echo ${trigger_cmd}|sed -E -e's|[[:space:]]|,@,|g')
-runtime_state_dir: ${runtime_state_dir}
-ncat_message_file: ${ncat_message_file}
-pid_file: ${pid_file}
-state_file: ${state_file}
-EOF
+dump_conf_function
 exit 0
 } # is_true dump_conf
 
@@ -853,6 +887,7 @@ done # while true
 ${client} && {
 DEBUG && debug_message "running as client"
 
+
 # update debug value in state file
 sed -E -i -e's|^ *debug=.*$|debug='${debug}'|' \
     $(prepend_state_dir ${state_file})
@@ -863,6 +898,13 @@ sed -E -i -e's|^ *debug=.*$|debug='${debug}'|' \
 . $(prepend_state_dir ${state_file})
 DEBUG && debug_message "$(update_state dump)"
 
+#
+# Dump configuration to stdout and exit
+#
+is_true dump_conf && {
+dump_conf_function
+exit 0
+} # is_true dump_conf
 
 #
 # sanity checks
