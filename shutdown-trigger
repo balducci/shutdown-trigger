@@ -879,6 +879,9 @@ do :
              echo "${remote_host[${ii}]}"
              eval "${remote_host[${ii}]}"
           done
+          # housekeeping in runtime_state_dir
+          rm -f $(prepend_state_dir ${pid_file})
+          rm -f $(prepend_state_dir ${ncat_message_file})
           # last thing:
           echo "exec shutdown -h now"
           exec shutdown -h now
