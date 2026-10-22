@@ -5,6 +5,8 @@
 #                                                                        #
 # Copyright (C) <2026>  <Gabriele Balducci>                              #
 #                                                                        #
+# Version: 0.1                                                           #
+#                                                                        #
 # This program is free software: you can redistribute it and/or modify   #
 # it under the terms of the GNU General Public License as published by   #
 # the Free Software Foundation, either version 3 of the License, or      #
@@ -18,6 +20,7 @@
 # You should have received a copy of the GNU General Public License      #
 # along with this program.  If not, see <https://www.gnu.org/licenses/>. #
 ##########################################################################
+version=0.1
 
 ########################################################################
 #                    Convenience functions start here                  #
@@ -238,6 +241,7 @@ shutdown-trigger <options>
 -s <n>     sleep n seconds between successive
            polls of the trigger device
            default: 30
+-V         print version to stdout and exit
 
 EOF
 
@@ -467,6 +471,7 @@ dot_char="."
 dot_group_marker='|'
 declare -i dots_per_line=70
 dump_conf=false
+dump_state=false
 declare -i every_n_dots=10
 foreground=false # default is to daemonize ourselves
 log_file=/var/log/shutdown-trigger.log
@@ -475,14 +480,13 @@ ncat_port_number=-1 # init to impossible value
 # ncat dumps received messages in this file
 # (relative to the runtime state directory)
 ncat_message_file=shutdown-trigger.ncat
+print_version=false
 quit=false
-dump_state=false
 runtime_state_dir=/var/run/shutdown-trigger
 state_file=state # relative to the runtime state directory
 sleep_time=30
-trigger_cmd='lsusb -d 174c:55aa 1>/dev/null 2>&1' # manhattan docking station
-                                                  # (ASMedia Technology)
-
+# purposedly unset
+unset trigger_cmd
 
 #
 # See if we are running in the background
@@ -577,7 +581,7 @@ cmd_line_args="${@}"
 # unset sleep_time_cmd_line
 # unset log_file_cmd_line
 # unset pid_file_cmd_line
-while getopts "bCc:dD:e:fg:hL:l:P:qSs:t:" _opt
+while getopts "bCc:dD:e:fg:hL:l:P:qSs:t:V" _opt
 do :
 glob C "${_opt}" && dump_conf=true
 glob D "${_opt}" && dot_char=${OPTARG}
@@ -593,6 +597,7 @@ glob l "${_opt}" && log_file=${OPTARG}
 glob q "${_opt}" && quit=true
 glob s "${_opt}" && sleep_time=${OPTARG}
 glob t "${_opt}" && date_time_interval=${OPTARG}
+glob V "${_opt}" && print_version=true
 done # while getopts x _opt
 # get remaining arguments (ie those NOT catched by getopts)
 shift $((OPTIND-1))
@@ -632,6 +637,15 @@ Invalid value: must be a positive integer
 #
 is_true dump_conf && {
 dump_conf_function
+exit 0
+} # is_true dump_conf
+
+
+#
+# Dump version to stdout and exit
+#
+is_true print_version && {
+echo ${version}
 exit 0
 } # is_true dump_conf
 
