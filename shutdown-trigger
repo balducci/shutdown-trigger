@@ -215,32 +215,38 @@ print_help () {
 
     cat <<EOF
 
-shutdown-trigger: monitor a usb device connected to the main power
-line to shutdown the system upon power failures
+shutdown-trigger: gently shutdown a computer powered by a UPS upon a
+                  power failure
 
 shutdown-trigger <options>
 
--b         run as a client of the running server
+Options:
+-b         run as a client of the running daemon
            default: run as a server
 -C         dump configuration (as the result of values in the
            configuration file and the command line options) to stdout
            and exit
--c <file>  source this configuration file
+-c <file>  source configuration file <file>
            default: /etc/shutdown-trigger.conf
--d         verbosely print debugging messages (when run as a server)
+-D "C"     use  "C" as the heartbeat character
+-d         verbosely print debug messages
+-e EE      print a "group marker" character after EE heartbeat characters
 -f         run in the foreground and do not daemonize
            default: after startup, rerun an instance in the background
+-g "G"     use character "G" as the "group marker" character
 -h         print help message and exit
 -l <file>  complete path to the logfile
            default: /var/log/shutdown-trigger.log
+-L LL      print LL heartbeat characters per line
 -P <port number>
            port number for client/server communication
-           defaul: first available port above 38000
+           default: first available port above 38000
 -q         client: terminate the running instance
 -S         client: dump state file to stdout
--s <n>     sleep n seconds between successive
-           polls of the trigger device
+-s S       sleep S seconds between successive polls of the trigger
+           device
            default: 30
+-t TT      print a date/time stamp every TT seconds
 -V         print version to stdout and exit
 
 EOF
