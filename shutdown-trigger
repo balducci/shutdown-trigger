@@ -488,6 +488,7 @@ ncat_port_number=-1 # init to impossible value
 ncat_message_file=shutdown-trigger.ncat
 print_version=false
 quit=false
+unset remote_host
 runtime_state_dir=/var/run/shutdown-trigger
 state_file=state # relative to the runtime state directory
 sleep_time=30
