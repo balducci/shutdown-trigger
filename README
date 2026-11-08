@@ -113,7 +113,7 @@ Using the makefile
     and remote_host definitions (the latter if you need to shutdown more
     than one machine)
   - browse (and possibly edit) the definitions of BINDIR MAN1 MAN5 and
-    ETC in Makfile
+    ETC in Makefile
   - become superuser
   - in the top directory of the unpacked tarball issue:
        make install
