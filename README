@@ -1,0 +1,119 @@
+                               OVERVIEW
+
+shutdown-trigger is a bash script which will gently shutdown your
+server connected to an Uninterruptible Power Supply (UPS) when there
+is a power failure.
+
+It will be useful in the following scenario.
+
+You have one or more servers powered by the UPS (typically at home).
+
+The UPS has no support for direct communication with a connected
+computer and when there is a power failure it only emits an acoustic
+alarm.
+
+This will be fine if you are nearby; but if the power failure happens
+when you are not at home (or you are deeply sleeping) and lasts for a
+long enough time, chances are that the UPS will exhaust its batteries
+and your servers will be brutally killed; which, of course, is
+something which we don't want to happen.
+
+This script will detect a power failure condition and immediately (and
+gently) shutdown your server(s) while they are still powered by the
+batteries of the UPS.
+
+Note: there are many UPS's which are able to communicate with the
+devices attached to them, thus making a script like this useless. But,
+in my experience, the costs of such UPS's are an order of magnitude
+higher than those lacking any possibility to communicate with the
+connected device(s). shutdown-trigger is handy when using these
+latter, much cheaper UPS's.
+
+How can shutdown-trigger detect a power failure condition? You need an
+additional device (call it "trigger device") which:
+1. is powered by the main line (that is: it is NOT connected to the
+   UPS)
+2. is connected to the server (typically at a USB port) and its
+   connection can be polled by the server
+
+So, the layout of the involved hardware is:
+
+
+    +--------------------------------------------------+
+    |              MAIN POWER LINE                     |
+    +-------+-----------------------------+------------+
+            |                             |
+            |                             |
+            |                        +----+-----+
+            |                        |   UPS    |
+            |                        +----+-----+
+            |                             |              
+            |                             |              
+            |                             |              
+   +--------+---------+    USB       +----+---------------+
+   |  trigger device  +--------------+      server        |
+   +------------------+              | (shutdown-trigger) |
+                                     +--------------------+
+
+This script runs as a daemon and periodically checks (typically with a
+period of tens of seconds) for the connection of the trigger
+device. If there is a power failure, the trigger device will die and
+the check for its connection will fail: this is how shutdown-trigger
+knows that it's time to shutdown the server.
+
+The trigger device can be anything which can be brutally and safely
+switched off by unplugging its power cable. I use a StarTech docking
+station (https://www.startech.com/en-us/hdd/satdocku3s), but any other
+(cheap) device satisfying requirements 1. and 2. above will do.
+
+shutdown-trigger has support for shutting down not only the server
+which it is running on, but also any other computer reachable from the
+server on the same network. This is useful when you have multiple
+servers powered by the UPS.
+
+                        DEPENDENCIES
+
+shutdown-trigger is a bash script, so you will need bash to run it
+(https://gnu.org/s/bash/). It should run on any POSIX compliant
+shell, but I did not check other shells, since I run bash on all my
+machines.
+
+The script uses standard unix commands like sed, grep etc: so you will
+need those commands available (they are found on any unix system).
+
+
+shutdown-trigger can be run as a daemon or as a client (of a
+running shutdown-trigger daemon). The communication between the
+daemon and the client is set up with the ncat command of the nmap
+package (https://nmap.org/), which is thus a mandatory dependency.
+
+It also uses the lsof command (https://github.com/lsof-org/lsof),
+which is not always installed: you need that too.
+
+                             INSTALLATION
+
+Manual installation
+  It is very easy to install shutdown-trigger by hand.
+
+  - unpack the tarball
+  - *edit* shutdown-trigger.conf.EDIT_ME, in particular the trigger_cmd
+    and remote_host definitions (the latter if you need to shutdown more
+    than one machine)
+  - become superuser
+  - copy shutdown-trigger.conf.EDIT_ME to /etc/shutdown-trigger.conf
+  - copy the shutdown-trigger executable to a suitable system directory,
+    eg /bin or /sbin
+  - copy the man pages to their corresponding directories:
+        shutdown-trigger.1 ->      .../man/man1
+        shutdown-trigger.conf.5 -> .../man/man5
+
+Using the makefile
+  - unpack the tarball
+  - *edit* shutdown-trigger.conf.EDIT_ME, in particular the trigger_cmd
+    and remote_host definitions (the latter if you need to shutdown more
+    than one machine)
+  - browse (and possibly edit) the definitions of BINDIR MAN1 MAN5 and
+    ETC in Makfile
+  - become superuser
+  - in the top directory of the unpacked tarball issue:
+       make install

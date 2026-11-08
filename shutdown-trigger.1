@@ -1,0 +1,313 @@
+.\" Copyright (C) <2026>  <Gabriele Balducci>
+.\"
+.\" This program is free software: you can redistribute it and/or modify
+.\" it under the terms of the GNU General Public License as published by
+.\" the Free Software Foundation, either version 3 of the License, or
+.\" (at your option) any later version.
+.\"
+.\" This program is distributed in the hope that it will be useful,
+.\" but WITHOUT ANY WARRANTY; without even the implied warranty of
+.\" MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+.\" GNU General Public License for more details.
+.\"
+.\" You should have received a copy of the GNU General Public License
+.\" along with this program.  If not, see <https://www.gnu.org/licenses/>.
+
+.TH SHUTDOWN\-TRIGGER 1 "" "" ""
+.SH NAME
+
+.TP 20
+shutdown-trigger \-  gently shutdown a computer powered by a UPS upon a
+power failure
+.SH SYNOPSIS
+\fBshutdown-trigger\fP [\fBdaemon options\fP]
+.br
+\fBshutdown-trigger -b\fP [\fBclient options\fP]
+
+.br
+.SH DESCRIPTION
+
+\fBshutdown-trigger\fP is a bash script which will gently shutdown
+your server connected to an Uninterruptible Power Supply (UPS) in case
+of a power failure.
+
+If the UPS has hardware and software ability to communicate with the
+connected devices (for example via a usb cable), then you don't need
+\fBshutdown-trigger\fP.
+
+But if the UPS has no support for communication and the main power
+failure lasts for long enough (and you are not home or you are deeply
+sleeping), then chances are that it will exhaust its batteries and
+your server will be switched off the brutal way. This is the scenario
+where \fBshutdown-trigger\fP can be useful.
+
+\fBshutdown-trigger\fP will detect a power failure condition and
+immediately (and gently) shutdown your server(s) while they are still
+powered by the batteries of the UPS.
+
+Power failure detection is obtained by polling an external device
+(call it "trigger device") which must satisfy the following two
+requirements:
+
+.nr step 1 1
+.IP \n[step] 2
+is powered by the main line (that is: it is NOT connected to the UPS)
+.IP \n+[step]
+is connected to the server (typically at a USB port) and its
+connection can be polled by the server
+
+The hardware layout is:
+
+.nf 
+    +--------------------------------------------------+
+    |              MAIN POWER LINE                     |
+    +-------+-----------------------------+------------+
+            |                             |
+            |                             |
+            |                        +----+-----+
+            |                        |   UPS    |
+            |                        +----+-----+
+            |                             |              
+            |                             |              
+            |                             |              
+   +--------+---------+    USB       +----+-------------+
+   |  trigger device  +--------------+  server running  |
+   +------------------+              | shutdown-trigger |
+                                     +------------------+
+
+.fi
+
+\fBshutdown-trigger\fP runs as a daemon and periodically checks
+(typically with a period of tens of seconds) for the connection of the
+trigger device. If there is a power failure, the trigger device will
+die and the check for its connection will fail: this is how the daemon
+knows that it's time to shutdown the server.
+
+The trigger device can be any cheap device which can be brutally
+switched off (by cutting its power supply) without damage and supports
+connection (typically via a USB cable) to a computer.
+
+\fBshutdown-trigger\fP has support for shutting down not only the server
+which it is running on, but also any other computer reachable from the
+server on the same network. This is useful when you have multiple
+servers powered by the UPS.
+
+
+.SH COMMAND LINE OPTIONS
+
+\fBshutdown-trigger\fP is run as a daemon. A \fBshutdown-trigger\fP
+daemon running in the background can be contacted by a second instance
+of \fBshutdown-trigger\fP run in the foreground as a client.
+
+The communication between the client and the daemon is implemented by
+using the \fBncat\fP command of the \fBnmap\fP package
+(\fBhttps://nmap.org/\fP), which, for this reason, is a mandatory
+dependency.
+
+Some command line options are shared by the daemon and the client,
+other options only apply either to the daemon or the client.
+
+At start time, \fBshutdown-trigger\fP reads a configuration file
+documented in \fBshutdown-trigger.conf(5)\fP. Command line options
+override definitions in the configuration file.
+
+.SS DAEMON OPTIONS
+
+.TP
+\fB-C\fP
+dump to stdout the current configuration, as resulting from the
+command line options and configuration file, and exit
+.TP
+\fB-l LOG_FILE\fP
+the absolute path to the log file.
+.br
+During normal operation, the daemon uses LOG_FILE for both
+periodically logging heartbeat characters (see below) and printing
+event driven messages (e.g. advertising a power failure).
+.br
+Default log file is /var/log/shutdown-trigger.log
+.TP
+\fB-f\fP
+when run as a daemon, \fBshutdown-trigger\fP immediately re-runs
+itself in the background. If the \fB-f\fP option is given on the
+command line, it will stay in the foreground. This can be useful for
+debugging.
+.TP
+\fB-P N\fP
+communication between a running daemon and a client
+is implemented through the \fBncat(1)\fP command. The daemon spawns a
+daemonized ncat listening on port \fBN\fP. The client sends messages
+to the daemon by running another instance of ncat on the same port.
+.br
+The default value for this option is -1: this value tells the daemon
+to pick the first available port >= 38000. Any value >0 will force the
+daemon to use the port with that value.
+.TP
+\fB-s S\fP
+sleep S seconds between successive
+polls of the trigger device
+.br
+Default: 30s
+
+.P
+The following options control heartbeat logging. The daemon dumps
+to LOG_FILE heartbeat characters every S seconds. The structure and
+meaning of this heartbeat logging is best explained with an example:
+
+.nf
+STARTING
+2026-10-09T16:38:22-01:00
+   1 .........|.........|.........|.........|.........|.........|.........
+  70 .........|.........|.........|.........|.........|.........|.........
+ 139 .........|.........|.........|.........|.........|.........|.........
+ 208 .........|.........|.........|.........|.........|.........|.........
+ 277 .........|.........|.........|.........|.........|.........|.........
+ 346 .........|.........|.........|.........|.........|.........|.........
+ [...]
+2026-10-10T16:47:48-01:00
+4348 .........|.........|.........|.........|.........|.........|.........
+4417 .........|.........|.........|.........|.........|.........|.........
+4486 .........|.........|.........|.........|.........|.........|.........
+4555 .........|.........|.........|.........|.........|.........|.........
+[...]
+.fi
+
+At start time, the daemon prints a message and a date/time stamp. Then
+it dumps a character every S seconds (S is the number of seconds it
+sleeps between polls of the trigger device): see the dots in the above
+example. In order to make it easy to count the heartbeat characters, a
+different character (call it "group marker") is printed every X of
+them: see the pipe character above. Moreover, a global heartbeat
+counter is printed at the beginning of each line. Date/time stamps are
+also printed periodically.
+
+.TP
+\fB-D "C"\fP
+use character "C" as the heartbeat character (the dot in the above example)
+.br
+Default: "." (a dot)
+.TP
+\fB-g "G"\fP
+use character "G" as the "group marker" character (the pipe character in
+the above example)
+.br
+Default: "|" (the pipe character)
+.TP
+\fB-e EE\fP
+EE (a positive integer) is the number of heartbeat characters after
+which the "group marker" character is printed (the pipe character in
+the above example)
+.br
+Default: 10
+.TP
+\fB-L LL\fP
+LL (a positive integer) is the total number of heartbeat characters to
+print on a single line; after printing LL heartbeat characters a new
+line is started with the global counter and a new array of heartbeat
+characters
+.br
+Default: 70
+.TP
+\fB-t TT\fP
+TT (a positive integer) is the time interval, in seconds, between two
+successive date/time stamps
+.br
+Default: 86400 (one day)
+
+.P
+Here is another (a bit unrealistic) example to further clarify the
+effect of these options.
+.br
+This combination:
+.br
+      \fB-D "," -g "/" -e 3 -L 9 -t 27 -s 3\fP
+.br
+would print a heartbeat character every 3 seconds like this:
+
+.nf
+STARTING
+2026-10-12T17:02:12-01:00
+       1 ,,/,,/,,/
+2026-10-12T17:02:39-01:00
+      10 ,,/,,/,,/
+2026-10-12T17:03:07-01:00
+      19 ,,/,,/,,/
+[...]
+.fi
+
+The deafult values for the heartbeat logging and the sleep time
+(-s option) are such that LOG_FILE will grow by approximately
+1.5MB per year.
+
+.br
+Other options:
+.br
+.TP
+\fB-d\fP
+(true/false) print debug messages.
+.br
+Default: false
+.TP
+\fB-V\fP
+print version and exit
+.TP
+\fB-h\fP
+print a help message and exit
+
+.SS CLIENT OPTIONS
+
+.TP
+\fB-b\fP
+with this option \fBshutdown-trigger\fP runs as a client and expects
+another instance of the script already running as a daemon
+.TP
+\fB-C\fP
+dump to stdout the current configuration, as resulting from the
+command line options and configuration file, and exit
+.TP
+\fB-S\fP
+dump the current state of the daemon. Note that this can differ from
+the daemon configuration printed with \fB-C\fP option. For example,
+the port used by the ncat command can have the default value of -1 in
+the configuration, but it will have a value >=38000 in the daemon
+state.
+.TP
+\fB-q\fP
+tell the running daemon to quit. This is the proper way to stop the
+daemon. When stopped this way, the daemon will perform housekeeping in
+its runtime state directory; if brutally kille, it won't clean the
+runtime state directory and this may cause troubles in a subsequent
+run.
+.TP
+\fB-d\fP
+print debug messages
+.TP
+\fB-V\fP
+print version and exit
+.TP
+\fB-h\fP
+print a help message and exit
+
+.SS AUTHOR
+Gabriele Balducci
+
+.SS COPYRIGHT
+Copyright: Gabriele Balducci
+
+.SS LICENSE
+See the file COPYING, distributed along with this code
+
+
+\" Local Variables:
+\" eval:
+\" (defun show ()""
+\"        (interactive)
+\"        (let ()
+\"          (start-process-shell-command "xterm" 
+\"                    "xterm-buffer"
+\"                    (concat "exec xterm " "-e 'eman ./shutdown-trigger.1'"))
+\"          )
+\"        )
+\" eval:(make-variable-buffer-local 'after-save-hook)
+\" eval:(add-hook 'after-save-hook 'show)
+\" End:

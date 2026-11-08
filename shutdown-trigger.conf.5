@@ -1,0 +1,234 @@
+.\" Copyright (C) <2026>  <Gabriele Balducci>
+.\"
+.\" This program is free software: you can redistribute it and/or modify
+.\" it under the terms of the GNU General Public License as published by
+.\" the Free Software Foundation, either version 3 of the License, or
+.\" (at your option) any later version.
+.\"
+.\" This program is distributed in the hope that it will be useful,
+.\" but WITHOUT ANY WARRANTY; without even the implied warranty of
+.\" MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+.\" GNU General Public License for more details.
+.\"
+.\" You should have received a copy of the GNU General Public License
+.\" along with this program.  If not, see <https://www.gnu.org/licenses/>.
+
+.TH SHUTDOWN\-TRIGGER.CONF 5 "" "" ""
+.SH NAME
+
+.TP 20
+shutdown-trigger.conf \-  configuration file for the \fBshutdown-trigger\fP script
+.SH SYNOPSIS
+\fB/etc/shutdown-trigger.conf\fP
+
+.br
+.SH DESCRIPTION
+
+\fBshutdown-trigger.conf\fP is the default configuration file for the
+\fBshutdown-trigger(1)\fP bash script.
+
+It gets sourced by \fBshutdown-trigger\fP at start time and thus its
+syntax is just bash (shell) syntax.
+
+\fBshutdown-trigger.conf\fP contains definitions of variables which
+are needed by \fBshutdown-trigger\fP to perform its tasks according to
+the user preferences.
+
+Some of the variables defined in \fBshutdown-trigger.conf\fP can also
+be set via command line options: these latter always take precedence
+over the definitions in \fBshutdown-trigger.conf\fP.
+
+However, there are some variables whose value can be set only in
+\fBshutdown-trigger.conf\fP, that is: not via command line
+options. For this reason, it is mandatory to browse and edit the
+distributed configuration file (which is called
+\fBshutdown-trigger.conf.EDIT_ME\fP), when installing
+\fBshutdown-trigger\fP for the first time. To facilitate editing
+\fBshutdown-trigger.conf\fP, each definition is preceeded by a comment
+explaining its meaning.
+
+
+
+.SH DEFINITIONS IN \fBshutdown-trigger.conf\fP
+.br
+(in the following, if a definition can also be set on the command
+line, the corresponding command line option will be mentioned)
+
+.TP
+\fBtrigger_cmd\fP
+this is the complete command (including arguments), enclosed with
+single quotes, which \fBshutdown-trigger\fP will use to monitor the
+trigger device. It will be eval'ed and must return 0 when successfull,
+!=0 otherwise.  Example: monitor a usb device identified by
+vendor:product_id:
+.br
+    trigger_cmd='lsusb -d 174c:55aa 1>/dev/null 2>&1'
+.br
+Note that this is purposedly left undefined in
+\fBshutdown-trigger.conf.EDIT_ME\fP): you must define this with a
+valid command, or shutdown-trigger won't start.
+.br
+Note also that this cannot be set on the command line
+
+.TP
+\fBsleep_time\fP
+how much time, in seconds, to sleep between successive polls of the
+trigger device (command line option: -s)
+
+.TP
+\fBruntime_state_dir\fP
+the absolute path to the directory where \fBshutdown-trigger\fP will
+create and maintain some files needed while running. If the directory
+does not exist, it will be created at start time.
+.br
+This is not available as a command line option.
+
+.TP
+\fBpid_file\fP
+name of the file where \fBshutdown-trigger\fP will store its PID. This
+is NOT an absolute path: it is just the name of the file which will be
+created in \fBruntime_state_dir\fP
+.br
+Example: pid_file=shutdown-trigger.pid
+.br
+This is not available as a command line option.
+
+.TP
+\fBstate_file\fP
+name of the file where \fBshutdown-trigger\fP will store its state at
+runtime. This is NOT an absolute path: it is just the name of the file
+which will be created in \fBruntime_state_dir\fP
+.br
+Example: state_file=state
+.br
+This is not available as a command line option.
+
+.TP
+\fBncat_port_number\fP
+the communication between the client and the daemon is implemented by
+using the \fBncat\fP command of the \fBnmap\fP package
+(\fBhttps://nmap.org/\fP). The daemon spawns a \fBncat\fP instance
+which listens on port number \fBncat_port_number\fP; the client sends
+messages to that same port. If \fBncat_port_number\fP is defined as
+-1, then \fBshutdown-trigger\fP will redefine \fBncat_port_number\fP
+to the first available port number >= 38000 (command line option: -P)
+.br
+Example: ncat_port_number=54321
+
+.TP
+\fBncat_message_file\fP
+name of the file used to exchange messages between client and daemon
+via \fBncat\fP. This is NOT an absolute path: it is just the name of
+the file which will be created in \fBruntime_state_dir\fP
+.br
+Example: ncat_message_file=shutdown-trigger.ncat
+.br
+This is not available as a command line option.
+
+.TP
+\fBlog_file\fP
+the absolute path to the logfile (command line option: -l)
+Example: log_file=/var/log/shutdown-trigger.log
+
+.TP
+\fBremote_host\fP
+a bash array of complete commands, one per line and enclosed with
+double quotes, used to shutdown additional remote hosts, besides the
+local host which \fBshutdown-trigger\fP is running on.
+Example:
+.nf
+   remote_host=(
+   "ssh user1@host1.lan.net sudo shutdown -h now"
+   "ssh user2@host2.lan.net sudo shutdown -h now"
+   )
+.fi
+This is not available as a command line option.
+
+.TP
+\fBauto_client\fP
+the name of a symbolic link pointing to shutdown-trigger: when the
+script is run via this link, it will assume that it is running as a
+client, without the need to give an explicit -b option. This is not
+available as a command line option.
+
+.TP
+\fBdebug\fP true/false
+when true, print additional debugging messages, either to stdout or to
+\fBlog_file\fP (command line option: -d)
+
+
+.TP
+\fBforeground\fP true/false
+when true, stay in the foreground, do not daemonize (command line
+option: -f)
+
+.P
+The following five definitions control heartbeat logging. See
+\fBshutdown-trigger.1\fP for the details of heartbeat logging. Each of
+these definitions can also be set on the command line.
+
+.TP
+\fBdot_char\fP
+this is defined as a single character which will be printed to
+\fBlog_file\fP every \fBsleep_time\fP seconds (command line option:
+-D)
+.br
+Example: dot_char=","
+
+.TP
+\fBdot_group_marker\fP
+a single character (called "group marker") which will be printed
+(instead of \fBdot_char\fP) every \fBevery_n_dots\fP (see below) \fBdot_char\fP
+characters (command line option: -g)
+.br
+Example: dot_group_marker="*"
+
+.TP
+\fBevery_n_dots\fP
+a positive integer which is the number of \fBdot_char\fP characters
+after which a \fBdot_group_marker\fP character is printed (command
+line option: -e)
+.br
+Example: every_n_dots=10
+
+.TP
+\fBdots_per_line\fP
+a positive integer which is the total number of \fBdot_char\fP and
+\fBdot_group_marker\fP characters printed on a single line; after
+printing \fBdots_per_line\fP heartbeat characters a new line is
+started with the global counter and a new array of heartbeat
+characters (command line option: -L)
+.br
+Example: dots_per_line=75
+
+.TP
+\fBdate_time_interval\fP
+a positive integer which is the time interval, in seconds, between two
+successive date/time stamps (command line option: -t)
+.br
+Example: date_time_interval=28800 # every 8 hours
+test
+
+
+/" Local Variables:
+/" eval:
+/" (defun reload-shutdown-trigger.conf.5 ()""
+/"        (interactive)
+/"        (let ()
+/"          (kill-buffer "*Man ./shutdown-trigger.conf.5*")
+/"          (man "./shutdown-trigger.conf.5")
+/"          (delete-other-windows)
+/"          )
+/"        )
+/" ;; eval:
+/" ;; (defun show ()""
+/" ;;        (interactive)
+/" ;;        (let ()
+/" ;;          (start-process-shell-command "xterm" 
+/" ;;                    "xterm-buffer"
+/" ;;                    (concat "exec xterm " "-e 'eman ./shutdown-trigger.conf.5'"))
+/" ;;          )
+/" ;;        )
+/" eval:(make-variable-buffer-local 'after-save-hook)
+/" eval:(add-hook 'after-save-hook 'reload-shutdown-trigger.conf.5)
+/" End:

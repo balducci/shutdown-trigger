@@ -1,0 +1,115 @@
+#!/bin/bash
+
+# The complete command with arguments, enclosed with single quotes, to
+# be used to monitor the trigger device. It will be eval'ed and must
+# return 0 when successfull, !=0 otherwise.
+# Example: monitor a usb device identified by vendor:product_id:
+# trigger_cmd='lsusb -d 174c:55aa 1>/dev/null 2>&1'
+# You must define this, or shutdown-trigger won't start
+trigger_cmd=''
+
+# How much time, in seconds, to sleep between successive polls of the
+# trigger device (command line option: -s)
+sleep_time=20
+
+# The absolute path to the directory where shutdown-trigger will create
+# and maintain some files needed while running. If the directory does
+# not exist, it will be created at start time.
+# This is not available as a command line option.
+runtime_state_dir=/var/run/shutdown-trigger
+
+
+# Name of the file where shutdown-trigger will store its PID. This is
+# NOT an absolute path: it is just the name of the file which will be
+# created in runtime_state_dir
+# This is not available as a command line option.
+pid_file=shutdown-trigger.pid
+
+# Name  of  the  file  where shutdown-trigger will store its state at
+# runtime. This is NOT an absolute path: it is just the name  of  the
+# file which will be created in runtime_state_dir
+# This is not available as a command line option.
+state_file=state
+
+
+# The  communication between the client and the daemon is implemented
+# by using the ncat command of the nmap package  (https://nmap.org/).
+# The  daemon  spawns  a  ncat  instance which listens on port number
+# ncat_port_number; the client sends messages to that same  port.  If
+# ncat_port_number is defined as -1, then shutdown-trigger will rede-
+# fine  ncat_port_number  to the first available port number >= 38000
+# (command line option: -P)
+ncat_port_number=-1
+
+
+# Name of the file used to exchange messages between client and  dae-
+# mon  via ncat. This is NOT an absolute path: it is just the name of
+# the file which will be created in runtime_state_dir
+# This is not available as a command line option.
+ncat_message_file=shutdown-trigger.ncat
+
+
+# The absolute path to the logfile (command line option: -l)
+log_file=/var/log/shutdown-trigger.log
+
+
+# A bash array of complete commands, one per line and enclosed with
+# double quotes, used to shutdown additional remote hosts, besides the
+# local host which shutdown-trigger is running on. This is not
+# available as a command line option.
+# Example:
+# remote_host=(
+# "ssh user1@host1.lan.net sudo shutdown -h now"
+# "ssh user2@host2.lan.net sudo shutdown -h now"
+# )
+remote_host=(
+)
+
+# The name of a symbolic link pointing to shutdown-trigger: when the
+# script is run via this link, it will assume that it is running as a
+# client, without the need to give an explicit -b option
+auto_client=sdtc
+
+# When true, print additional debugging messages, either to stdout or
+# to log_file (command line option: -d)
+debug=false
+
+
+# When  true,  stay in the foreground, do not daemonize (command line
+# option: -f)
+foreground=false
+
+
+# The following five definitions control heartbeat  logging.  See  shutdown-
+# trigger.1  for the details of heartbeat logging. Each of these definitions
+# can also be set on the command line.
+
+
+# This is defined as a single character  which  will  be  printed  to
+# log_file every sleep_time seconds (command line option: -D)
+dot_char="."
+
+
+# A single character (called "group marker") which will be printed
+# (instead of dot_char) every every_n_dots (see below) dot_char
+# characters (command line option: -g)
+dot_group_marker='|'
+
+
+# A positive integer which is the number of dot_char characters after
+# which a dot_group_marker character is printed (command line option:
+# -e)
+every_n_dots=10
+
+
+# A positive integer which  is  the  total  number  of  dot_char  and
+# dot_group_marker  characters printed on a single line; after print-
+# ing dots_per_line heartbeat characters a new line is  started  with
+# the global counter and a new array of heartbeat characters (command
+# line option: -L)
+dots_per_line=70
+
+
+# A  positive integer which is the time interval, in seconds, between
+# two successive date/time stamps (command line option: -t)
+date_time_interval=86400
